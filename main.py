@@ -11,6 +11,14 @@ load_dotenv()
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 app = FastAPI()
+from fastapi import FastAPI
+
+app = FastAPI()
+
+@app.get("/")
+def home():
+    return {"message": "site çalışıyor"}
+
 
 # Ana sayfa (chat arayüzü)
 @app.get("/", response_class=HTMLResponse)
