@@ -1,100 +1,144 @@
-import os
-from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, Request, Depends, HTTPException
+from fastapi.responses import HTMLResponse, RedirectResponse
+from pydantic import BaseModel
+from sqlalchemy.orm import Session
+from starlette.middleware.sessions import SessionMiddleware
+from authlib.integrations.starlette_client import OAuth
 from dotenv import load_dotenv
-from openai import OpenAI
+import os
 
-# .env yükle
+from database import get_db, engine, Base
+import models
+
+# DB oluştur
+Base.metadata.create_all(bind=engine)
+
+app = FastAPI()
+
+# Session middleware
+app.add_middleware(SessionMiddleware, secret_key="supersecretkey")
+
+# ENV yükle
 load_dotenv()
 
-# OpenAI client
+# OAuth
+oauth = OAuth()
+oauth.register(
+    name='google',
+    client_id=os.getenv("GOOGLE_CLIENT_ID"),
+    client_secret=os.getenv("GOOGLE_CLIENT_SECRET"),
+    server_metadata_url='https://accounts.google.com/.well-known/openid-configuration',
+    client_kwargs={
+        'scope': 'openid email profile'
+    }
+)
+
+# ------------------ OPENAI ------------------
+
+from openai import OpenAI
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-app = FastAPI()
-from fastapi import FastAPI
+# ------------------ HOME ------------------
 
-app = FastAPI()
-
-@app.get("/")
-def home():
-    return {"message": "site çalışıyor"}
-
-
-# Ana sayfa (chat arayüzü)
 @app.get("/", response_class=HTMLResponse)
 async def home():
     return """
-    <html>
-    <head>
-        <title>AI Chat</title>
-        <style>
-            body {
-                background: #121212;
-                color: white;
-                font-family: Arial;
-                text-align: center;
-            }
-            input {
-                padding: 10px;
-                width: 300px;
-                border-radius: 10px;
-                border: none;
-            }
-            button {
-                padding: 10px;
-                border-radius: 10px;
-                border: none;
-                cursor: pointer;
-            }
-        </style>
-    </head>
-    <body>
-        <h1>AI Chat 🤖</h1>
-        <input id="msg" placeholder="Bir şey yaz...">
-        <button onclick="send()">Gönder</button>
-        <p id="res"></p>
-
-        <script>
-            async function send() {
-                let msg = document.getElementById("msg").value;
-
-                let res = await fetch("/chat", {
-                    method: "POST",
-                    headers: {"Content-Type": "application/json"},
-                    body: JSON.stringify({message: msg})
-                });
-
-                let data = await res.json();
-                document.getElementById("res").innerText = data.reply;
-            }
-
-            // ENTER ile gönderme
-            document.getElementById("msg").addEventListener("keypress", function(e) {
-                if (e.key === "Enter") {
-                    send();
-                }
-            });
-        </script>
-    </body>
-    </html>
+    <h1>AI Chat çalışıyor 🎉</h1>
+    <a href="/login">Google ile giriş yap</a>
     """
 
-# Chat endpoint
-@app.post("/chat")
-async def chat(request: Request):
-    data = await request.json()
-    user_message = data["message"]
+# ------------------ LOGIN ------------------
 
+@app.get("/login")
+async def login(request: Request):
+    redirect_uri = os.getenv("REDIRECT_URI")
+    return await oauth.google.authorize_redirect(request, redirect_uri)
+
+@app.get("/auth/callback")
+async def auth_callback(request: Request, db: Session = Depends(get_db)):
+    token = await oauth.google.authorize_access_token(request)
+    user = token.get("userinfo")
+
+    if not user:
+        return {"error": "Google user alınamadı"}
+
+    # DB kontrol
+    db_user = db.query(models.User).filter(models.User.email == user["email"]).first()
+
+    if not db_user:
+        db_user = models.User(
+            email=user["email"],
+            password="google_user"
+        )
+        db.add(db_user)
+        db.commit()
+        db.refresh(db_user)
+
+    # SESSION
+    request.session["user"] = {
+        "id": db_user.id,
+        "name": user["name"],
+        "email": user["email"]
+    }
+
+    return RedirectResponse("/profile")
+
+# ------------------ PROFILE ------------------
+
+@app.get("/profile", response_class=HTMLResponse)
+async def profile(request: Request):
+    user = request.session.get("user")
+
+    if not user:
+        return RedirectResponse("/login")
+
+    return f"""
+    <h2>Hoş geldin {user['name']} 🎉</h2>
+    <p>{user['email']}</p>
+
+    <form action="/chat" method="post">
+        <input name="message" placeholder="Mesaj yaz"/>
+        <button type="submit">Gönder</button>
+    </form>
+    """
+
+# ------------------ CHAT ------------------
+
+class ChatForm(BaseModel):
+    message: str
+
+@app.post("/chat", response_class=HTMLResponse)
+async def chat(request: Request, db: Session = Depends(get_db)):
+    form = await request.form()
+    message = form.get("message")
+
+    user = request.session.get("user")
+
+    if not user:
+        return RedirectResponse("/login")
+
+    # OPENAI
     response = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
-            {"role": "system", "content": "Sen Türkçe konuşan yardımcı bir asistansın."},
-            {"role": "user", "content": user_message}
+            {"role": "user", "content": message}
         ]
     )
 
-    reply = response.choices[0].message.content
+    ai_text = response.choices[0].message.content
 
-    return {"reply": reply}
-    # fix
+    # DB kaydet
+    new_chat = models.Chat(
+        user_id=user["id"],
+        user_message=message,
+        ai_response=ai_text
+    )
 
+    db.add(new_chat)
+    db.commit()
+
+    return f"""
+    <p><b>Sen:</b> {message}</p>
+    <p><b>AI:</b> {ai_text}</p>
+    <a href="/profile">Geri dön</a>
+    """
