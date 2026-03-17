@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request, Depends, HTTPException
+from fastapi import FastAPI, Request, Depends
 from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -15,10 +15,10 @@ Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
 
-# Session middleware
+# Session
 app.add_middleware(SessionMiddleware, secret_key="supersecretkey")
 
-# ENV yükle
+# ENV
 load_dotenv()
 
 # OAuth
@@ -28,13 +28,10 @@ oauth.register(
     client_id=os.getenv("GOOGLE_CLIENT_ID"),
     client_secret=os.getenv("GOOGLE_CLIENT_SECRET"),
     server_metadata_url='https://accounts.google.com/.well-known/openid-configuration',
-    client_kwargs={
-        'scope': 'openid email profile'
-    }
+    client_kwargs={'scope': 'openid email profile'}
 )
 
-# ------------------ OPENAI ------------------
-
+# OpenAI
 from openai import OpenAI
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
@@ -43,7 +40,7 @@ client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 @app.get("/", response_class=HTMLResponse)
 async def home():
     return """
-    <h1>AI Chat çalışıyor 🎉</h1>
+    <h1>AI Chat 🎉</h1>
     <a href="/login">Google ile giriş yap</a>
     """
 
@@ -59,10 +56,6 @@ async def auth_callback(request: Request, db: Session = Depends(get_db)):
     token = await oauth.google.authorize_access_token(request)
     user = token.get("userinfo")
 
-    if not user:
-        return {"error": "Google user alınamadı"}
-
-    # DB kontrol
     db_user = db.query(models.User).filter(models.User.email == user["email"]).first()
 
     if not db_user:
@@ -74,7 +67,6 @@ async def auth_callback(request: Request, db: Session = Depends(get_db)):
         db.commit()
         db.refresh(db_user)
 
-    # SESSION
     request.session["user"] = {
         "id": db_user.id,
         "name": user["name"],
@@ -104,9 +96,6 @@ async def profile(request: Request):
 
 # ------------------ CHAT ------------------
 
-class ChatForm(BaseModel):
-    message: str
-
 @app.post("/chat", response_class=HTMLResponse)
 async def chat(request: Request, db: Session = Depends(get_db)):
     form = await request.form()
@@ -117,7 +106,6 @@ async def chat(request: Request, db: Session = Depends(get_db)):
     if not user:
         return RedirectResponse("/login")
 
-    # OPENAI
     response = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
@@ -127,7 +115,6 @@ async def chat(request: Request, db: Session = Depends(get_db)):
 
     ai_text = response.choices[0].message.content
 
-    # DB kaydet
     new_chat = models.Chat(
         user_id=user["id"],
         user_message=message,
