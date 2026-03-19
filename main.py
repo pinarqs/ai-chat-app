@@ -116,15 +116,16 @@ async def profile(request: Request):
 
 @app.post("/chat", response_class=HTMLResponse)
 async def chat(request: Request, db: Session = Depends(get_db)):
-    form = await request.form()
-    message = form.get("message")
-
-    user = request.session.get("user")
-
-    if not user:
-        return RedirectResponse("/login")
-
     try:
+        form = await request.form()
+        message = form.get("message")
+
+        user = request.session.get("user")
+
+        if not user:
+            return RedirectResponse("/login")
+
+        # OPENAI
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
@@ -134,18 +135,22 @@ async def chat(request: Request, db: Session = Depends(get_db)):
 
         ai_text = response.choices[0].message.content
 
-    except Exception as e:
-        return HTMLResponse(f"<h1>OpenAI Hatası ❌</h1><p>{str(e)}</p>")
+        return HTMLResponse(f"""
+        <h2>ÇALIŞTI 🎉</h2>
+        <p><b>Sen:</b> {message}</p>
+        <p><b>AI:</b> {ai_text}</p>
+        <a href="/profile">Geri dön</a>
+        """)
 
-    new_chat = models.Chat(
-        user_id=user["id"],
-        user_message=message,
-        ai_response=ai_text
-    )
+    except Exception as e:
+        return HTMLResponse(f"""
+        <h1>HATA YAKALANDI ❌</h1>
+        <p>{str(e)}</p>
+        """)
 
     db.add(new_chat)
     db.commit()
-    
+
     print("MESAJ GELDİ:", message)
     return HTMLResponse(f"""
 <h2>Mesaj gönderildi</h2>
