@@ -146,24 +146,4 @@ async def chat(request: Request, db: Session = Depends(get_db)):
         return HTMLResponse(f"""
         <h1>HATA YAKALANDI ❌</h1>
         <p>{str(e)}</p>
-        """)
-
-    db.add(new_chat)
-    db.commit()
-
-    print("MESAJ GELDİ:", message)
-    return HTMLResponse(f"""
-<h2>Mesaj gönderildi</h2>
-<p><b>Sen:</b> {message}</p>
-<p><b>AI:</b> {ai_text}</p>
-<a href="/profile">Geri dön</a>
-""")
-
-    db.add(new_chat)
-    db.commit()
-
-    return f"""
-    <p><b>Sen:</b> {message}</p>
-    <p><b>AI:</b> {ai_text}</p>
-    <a href="/profile">Geri dön</a>
-    """
+        """);
