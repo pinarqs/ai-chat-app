@@ -53,25 +53,35 @@ async def login(request: Request):
 
 @app.get("/auth/callback")
 async def auth_callback(request: Request, db: Session = Depends(get_db)):
-    token = await oauth.google.authorize_access_token(request)
-    user = token.get("userinfo")
+    try:
+        token = await oauth.google.authorize_access_token(request)
+        user = token.get("userinfo")
 
-    db_user = db.query(models.User).filter(models.User.email == user["email"]).first()
+        if not user:
+            return HTMLResponse("<h1>User bilgisi alınamadı ❌</h1>")
 
-    if not db_user:
-        db_user = models.User(
-            email=user["email"],
-            password="google_user"
-        )
-        db.add(db_user)
-        db.commit()
-        db.refresh(db_user)
+        db_user = db.query(models.User).filter(models.User.email == user["email"]).first()
 
-    request.session["user"] = {
-        "id": db_user.id,
-        "name": user["name"],
-        "email": user["email"]
-    }
+        if not db_user:
+            db_user = models.User(
+                email=user["email"],
+                password="google_user"
+            )
+            db.add(db_user)
+            db.commit()
+            db.refresh(db_user)
+
+        request.session["user"] = {
+            "id": db_user.id,
+            "name": user["name"],
+            "email": user["email"]
+        }
+
+        return RedirectResponse("/profile")
+
+    except Exception as e:
+        return HTMLResponse(f"<h1>Hata oluştu ❌</h1><p>{str(e)}</p>")
+    
 
     return RedirectResponse("/profile")
 
