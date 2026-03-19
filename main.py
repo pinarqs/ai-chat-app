@@ -38,10 +38,12 @@ oauth.register(
     client_kwargs={'scope': 'openid email profile'}
 )
 
-# OpenAI
 from openai import OpenAI
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
+client = OpenAI(
+    api_key=os.getenv("GROQ_API_KEY"),
+    base_url="https://api.groq.com/openai/v1"
+)
 # ------------------ HOME ------------------
 
 @app.get("/", response_class=HTMLResponse)
@@ -127,7 +129,7 @@ async def chat(request: Request, db: Session = Depends(get_db)):
 
         # OPENAI
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="llama3-8b-8192"
             messages=[
                 {"role": "user", "content": message}
             ]
