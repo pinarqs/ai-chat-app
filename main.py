@@ -126,14 +126,13 @@ async def chat(request: Request, db: Session = Depends(get_db)):
 
         if not user:
             return RedirectResponse("/login")
-
-        # OPENAI
+        
         response = client.chat.completions.create(
-            model="llama3-8b-8192"
-            messages=[
-                {"role": "user", "content": message}
-            ]
-        )
+    model="llama3-8b-8192",
+    messages=[
+        {"role": "user", "content": message}
+    ]
+)
 
         ai_text = response.choices[0].message.content
 
