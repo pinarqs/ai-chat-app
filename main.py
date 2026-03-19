@@ -128,7 +128,7 @@ async def chat(request: Request, db: Session = Depends(get_db)):
             return RedirectResponse("/login")
         
         response = client.chat.completions.create(
-    model="llama3-8b-8192",
+    model="llama3-70b-8192",
     messages=[
         {"role": "user", "content": message}
     ]
