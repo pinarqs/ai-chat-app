@@ -137,11 +137,16 @@ async def chat(request: Request, db: Session = Depends(get_db)):
         ai_text = response.choices[0].message.content
 
         return HTMLResponse(f"""
-        <h2>ÇALIŞTI 🎉</h2>
-        <p><b>Sen:</b> {message}</p>
-        <p><b>AI:</b> {ai_text}</p>
-        <a href="/profile">Geri dön</a>
-        """)
+<h2>Chat 💬</h2>
+
+<p><b>Sen:</b> {message}</p>
+<p><b>AI:</b> {ai_text}</p>
+
+<form action="/chat" method="post">
+    <input name="message" placeholder="Mesaj yaz"/>
+    <button type="submit">Gönder</button>
+</form>
+""")
 
     except Exception as e:
         return HTMLResponse(f"""
