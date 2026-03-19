@@ -17,7 +17,13 @@ Base.metadata.create_all(bind=engine)
 app = FastAPI()
 
 # Session
-app.add_middleware(SessionMiddleware, secret_key="supersecretkey")
+app.add_middleware(
+    SessionMiddleware,
+    secret_key="supersecretkey",
+    same_site="none",
+    https_only=True,
+    max_age=3600
+)
 
 # ENV
 load_dotenv()
@@ -118,20 +124,34 @@ async def chat(request: Request, db: Session = Depends(get_db)):
     if not user:
         return RedirectResponse("/login")
 
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "user", "content": message}
-        ]
-    )
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "user", "content": message}
+            ]
+        )
 
-    ai_text = response.choices[0].message.content
+        ai_text = response.choices[0].message.content
+
+    except Exception as e:
+        return HTMLResponse(f"<h1>OpenAI Hatası ❌</h1><p>{str(e)}</p>")
 
     new_chat = models.Chat(
         user_id=user["id"],
         user_message=message,
         ai_response=ai_text
     )
+
+    db.add(new_chat)
+    db.commit()
+
+    return f"""
+    <p><b>Sen:</b> {message}</p>
+    <p><b>AI:</b> {ai_text}</p>
+    <a href="/profile">Geri dön</a>
+    """
+
 
     db.add(new_chat)
     db.commit()
