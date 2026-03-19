@@ -7,16 +7,15 @@ from starlette.middleware.sessions import SessionMiddleware
 from authlib.integrations.starlette_client import OAuth
 from dotenv import load_dotenv
 import os
+from datetime import datetime
 
 from database import get_db, engine, Base
 import models
 
-# DB oluştur
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
 
-# Session
 app.add_middleware(
     SessionMiddleware,
     secret_key="supersecretkey",
@@ -25,10 +24,8 @@ app.add_middleware(
     max_age=3600
 )
 
-# ENV
 load_dotenv()
 
-# OAuth
 oauth = OAuth()
 oauth.register(
     name='google',
@@ -108,8 +105,12 @@ async def chat_page(request: Request, db: Session = Depends(get_db)):
 
     for c in chats:
         chat_html += f"""
-        <div class="user">{c.user_message}</div>
-        <div class="ai">{c.ai_response}</div>
+        <div class="user">{c.user_message}
+            <div class="time">{c.created_at.strftime("%H:%M") if hasattr(c, 'created_at') else ''}</div>
+        </div>
+        <div class="ai">{c.ai_response}
+            <div class="time">{c.created_at.strftime("%H:%M") if hasattr(c, 'created_at') else ''}</div>
+        </div>
         """
 
     return HTMLResponse(f"""
@@ -120,6 +121,12 @@ body {{
     margin: 0;
     font-family: Arial;
     background: linear-gradient(135deg, #667eea, #764ba2);
+    transition: 0.3s;
+}}
+
+body.dark {{
+    background: #121212;
+    color: white;
 }}
 
 .container {{
@@ -134,7 +141,10 @@ body {{
     border-radius: 15px;
     height: 70vh;
     overflow-y: auto;
-    box-shadow: 0 5px 20px rgba(0,0,0,0.2);
+}}
+
+body.dark .chat-box {{
+    background: #1e1e1e;
 }}
 
 .user {{
@@ -151,6 +161,11 @@ body {{
     margin: 5px;
     border-radius: 10px;
     text-align: left;
+}}
+
+.time {{
+    font-size: 10px;
+    color: gray;
 }}
 
 form {{
@@ -175,30 +190,35 @@ button {{
     cursor: pointer;
 }}
 
-button:hover {{
-    background: #5a67d8;
+#typing {{
+    display:none;
+    color: gray;
+    margin-top:5px;
 }}
 
-.footer {{
-    text-align: center;
-    margin-top: 10px;
-    color: white;
-    font-size: 12px;
+.toggle {{
+    position: absolute;
+    top: 10px;
+    right: 10px;
 }}
 </style>
 </head>
 
 <body>
 
+<button class="toggle" onclick="toggleDark()">🌙</button>
+
 <div class="container">
 
-<h2 style="color:white;">Hoş geldin {user['name']} 👋</h2>
+<h2>Hoş geldin {user['name']} 👋</h2>
 
-<div class="chat-box">
+<div class="chat-box" id="chatBox">
 {chat_html}
 </div>
 
-<form action="/chat" method="post">
+<p id="typing">AI yazıyor...</p>
+
+<form id="chatForm" action="/chat" method="post">
     <input id="msg" name="message" placeholder="Mesaj yaz..." required>
     <button type="submit">Gönder</button>
 </form>
@@ -208,12 +228,32 @@ button:hover {{
 </div>
 
 <script>
-document.getElementById("msg").addEventListener("keypress", function(e) {{
+const form = document.getElementById("chatForm");
+const input = document.getElementById("msg");
+
+input.addEventListener("keypress", function(e) {{
     if (e.key === "Enter") {{
         e.preventDefault();
-        this.form.submit();
+        form.submit();
     }}
 }});
+
+form.addEventListener("submit", function() {{
+    document.getElementById("typing").style.display = "block";
+}});
+
+function toggleDark() {{
+    document.body.classList.toggle("dark");
+    localStorage.setItem("dark", document.body.classList.contains("dark"));
+}}
+
+if (localStorage.getItem("dark") === "true") {{
+    document.body.classList.add("dark");
+}}
+
+// scroll en alta
+let box = document.getElementById("chatBox");
+box.scrollTop = box.scrollHeight;
 </script>
 
 </body>
