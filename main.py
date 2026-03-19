@@ -19,10 +19,11 @@ app = FastAPI()
 app.add_middleware(
     SessionMiddleware,
     secret_key="supersecretkey",
-    same_site="none",
-    https_only=True,
+    same_site="lax",
+    https_only=False,
     max_age=3600
 )
+
 
 load_dotenv()
 
