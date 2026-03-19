@@ -42,33 +42,29 @@ client = OpenAI(
     base_url="https://api.groq.com/openai/v1"
 )
 
-# ------------------ HOME ------------------
+# ---------------- HOME ----------------
 
 @app.get("/", response_class=HTMLResponse)
 async def home():
-    return """
-    <h1>AI Chat 🎉</h1>
-    <a href="/login">Google ile giriş yap</a>
-    """
+    return "<h1>AI Chat 🎉</h1><a href='/login'>Google ile giriş</a>"
 
-# ------------------ LOGIN ------------------
+# ---------------- LOGIN ----------------
 
 @app.get("/login")
 async def login(request: Request):
-    redirect_uri = os.getenv("REDIRECT_URI")
-    return await oauth.google.authorize_redirect(request, redirect_uri)
+    return await oauth.google.authorize_redirect(request, os.getenv("REDIRECT_URI"))
 
-# ------------------ CALLBACK ------------------
+# ---------------- CALLBACK ----------------
 
 @app.get("/auth/callback")
-async def auth_callback(request: Request, db: Session = Depends(get_db)):
+async def callback(request: Request, db: Session = Depends(get_db)):
     token = await oauth.google.authorize_access_token(request)
     user = token.get("userinfo")
 
     db_user = db.query(models.User).filter(models.User.email == user["email"]).first()
 
     if not db_user:
-        db_user = models.User(email=user["email"], password="google_user")
+        db_user = models.User(email=user["email"], password="google")
         db.add(db_user)
         db.commit()
         db.refresh(db_user)
@@ -81,7 +77,7 @@ async def auth_callback(request: Request, db: Session = Depends(get_db)):
 
     return RedirectResponse("/chat")
 
-# ------------------ CHAT PAGE ------------------
+# ---------------- CHAT PAGE ----------------
 
 @app.get("/chat", response_class=HTMLResponse)
 async def chat_page(request: Request, db: Session = Depends(get_db)):
@@ -97,9 +93,14 @@ async def chat_page(request: Request, db: Session = Depends(get_db)):
     chat_html = ""
     for c in chats:
         time_str = datetime.now().strftime("%H:%M")
+        title = c.user_message[:20]
+
         chat_html += f"""
-        <div class="user">{c.user_message}<span>{time_str}</span></div>
-        <div class="ai">{c.ai_response}<span>{time_str}</span></div>
+        <div class="msg">
+            <div class="title">{title}</div>
+            <div class="user">{c.user_message}<span>{time_str}</span></div>
+            <div class="ai">{c.ai_response}<span>{time_str}</span></div>
+        </div>
         """
 
     return HTMLResponse(f"""
@@ -118,14 +119,32 @@ body.dark {{
 }}
 
 .container {{
-    max-width:600px;
+    max-width:700px;
     margin:auto;
     padding:20px;
 }}
 
+.header {{
+    display:flex;
+    align-items:center;
+    margin-bottom:10px;
+}}
+
+.avatar {{
+    width:40px;
+    height:40px;
+    border-radius:50%;
+    margin-right:10px;
+}}
+
+.status {{
+    font-size:12px;
+    color:lightgreen;
+}}
+
 .chat-box {{
     background:white;
-    height:70vh;
+    height:60vh;
     overflow-y:auto;
     border-radius:15px;
     padding:10px;
@@ -133,6 +152,16 @@ body.dark {{
 
 body.dark .chat-box {{
     background:#1e1e1e;
+}}
+
+.msg {{
+    margin-bottom:15px;
+}}
+
+.title {{
+    font-size:12px;
+    color:#888;
+    margin-left:5px;
 }}
 
 .user {{
@@ -151,9 +180,9 @@ body.dark .chat-box {{
 }}
 
 span {{
-    display:block;
     font-size:10px;
     color:gray;
+    display:block;
 }}
 
 form {{
@@ -182,6 +211,14 @@ button {{
     color:gray;
 }}
 
+.search {{
+    width:100%;
+    padding:8px;
+    margin-bottom:10px;
+    border-radius:10px;
+    border:none;
+}}
+
 .toggle {{
     position:absolute;
     top:10px;
@@ -195,7 +232,16 @@ button {{
 <button class="toggle" onclick="toggleDark()">🌙</button>
 
 <div class="container">
-<h2>Hoş geldin {user['name']} 👋</h2>
+
+<div class="header">
+<img src="https://i.pravatar.cc/40" class="avatar">
+<div>
+<div>{user['name']}</div>
+<div class="status">🟢 Online</div>
+</div>
+</div>
+
+<input class="search" id="search" placeholder="Ara...">
 
 <div id="chatBox" class="chat-box">
 {chat_html}
@@ -204,7 +250,7 @@ button {{
 <p id="typing">AI yazıyor...</p>
 
 <form id="chatForm">
-<input id="msg" name="message" placeholder="Mesaj yaz..." required>
+<input id="msg" placeholder="Mesaj yaz...">
 <button>Gönder</button>
 </form>
 
@@ -224,28 +270,32 @@ e.preventDefault();
 let message=input.value;
 if(!message)return;
 
-chatBox.innerHTML+=`<div class="user">${{message}}</div>`;
-input.value="";
-document.getElementById("typing").style.display="block";
+let time=new Date().toLocaleTimeString().slice(0,5);
 
-let res=await fetch("/chat",{{
-method:"POST",
-body:new URLSearchParams({{message}})
-}});
+chatBox.innerHTML+=`
+<div class="msg">
+<div class="title">${{message.slice(0,20)}}</div>
+<div class="user">${{message}}<span>${{time}}</span></div>
+</div>`;
+
+input.value="";
+typing.style.display="block";
+
+let res=await fetch("/chat",{{method:"POST",body:new URLSearchParams({{message}})}});
 
 let data=await res.json();
 
-document.getElementById("typing").style.display="none";
+typing.style.display="none";
 
-chatBox.innerHTML+=`<div class="ai">${{data.ai}}</div>`;
+chatBox.innerHTML+=`
+<div class="ai">${{data.ai}}<span>${{time}}</span></div>
+`;
+
 chatBox.scrollTop=chatBox.scrollHeight;
 }});
 
-input.addEventListener("keypress",function(e){{
-if(e.key==="Enter"){{
-e.preventDefault();
-form.dispatchEvent(new Event("submit"));
-}}
+input.addEventListener("keypress",e=>{{
+if(e.key==="Enter"){{e.preventDefault();form.dispatchEvent(new Event("submit"));}}
 }});
 
 function toggleDark(){{
@@ -253,9 +303,15 @@ document.body.classList.toggle("dark");
 localStorage.setItem("dark",document.body.classList.contains("dark"));
 }}
 
-if(localStorage.getItem("dark")==="true"){{
-document.body.classList.add("dark");
-}}
+if(localStorage.getItem("dark")==="true")document.body.classList.add("dark");
+
+// SEARCH
+document.getElementById("search").addEventListener("input",function(){{
+let val=this.value.toLowerCase();
+document.querySelectorAll(".msg").forEach(m=>{{
+m.style.display=m.innerText.toLowerCase().includes(val)?"block":"none";
+}});
+}});
 
 chatBox.scrollTop=chatBox.scrollHeight;
 </script>
@@ -264,7 +320,7 @@ chatBox.scrollTop=chatBox.scrollHeight;
 </html>
 """)
 
-# ------------------ CHAT POST ------------------
+# ---------------- CHAT POST ----------------
 
 @app.post("/chat")
 async def chat(request: Request, db: Session = Depends(get_db)):
@@ -275,18 +331,16 @@ async def chat(request: Request, db: Session = Depends(get_db)):
 
     response = client.chat.completions.create(
         model="llama-3.3-70b-versatile",
-        messages=[{"role": "user", "content": message}]
+        messages=[{"role":"user","content":message}]
     )
 
     ai_text = response.choices[0].message.content
 
-    new_chat = models.Chat(
+    db.add(models.Chat(
         user_id=user["id"],
         user_message=message,
         ai_response=ai_text
-    )
-
-    db.add(new_chat)
+    ))
     db.commit()
 
     return JSONResponse({"ai": ai_text})
