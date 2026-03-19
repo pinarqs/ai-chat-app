@@ -1,3 +1,4 @@
+print("APP BAŞLADI")
 from fastapi import FastAPI, Request, Depends
 from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel
@@ -51,6 +52,7 @@ async def login(request: Request):
     redirect_uri = os.getenv("REDIRECT_URI")
     return await oauth.google.authorize_redirect(request, redirect_uri)
 
+print("CALLBACK YÜKLENDİ")
 @app.get("/auth/callback")
 async def auth_callback(request: Request, db: Session = Depends(get_db)):
     try:
@@ -81,7 +83,7 @@ async def auth_callback(request: Request, db: Session = Depends(get_db)):
 
     except Exception as e:
         return HTMLResponse(f"<h1>Hata oluştu ❌</h1><p>{str(e)}</p>")
-    
+
 
     return RedirectResponse("/profile")
 
