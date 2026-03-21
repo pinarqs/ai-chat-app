@@ -719,6 +719,13 @@ async def chat_page(request: Request, db: Session = Depends(get_db)):
                 return div.innerHTML;
             }}
 
+            function formatAI(text) {{
+            let safe = escapeHtml(text);
+            safe = safe.replace(/\*\*(.*?)\*\*/g,"<strong>$1</strong>");
+            safe = safe.split("\n").join("<br>");
+            return safe;
+            }}
+
             function chatTitle(text) {{
                 const clean = text.trim().replace(/\\s+/g, " ");
                 return clean.length > 28 ? clean.slice(0, 28) + "..." : clean;
