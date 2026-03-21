@@ -201,7 +201,7 @@ async def chat_page(request: Request, db: Session = Depends(get_db)):
             </div>
             <div class="ai-wrap">
                 <div class="bubble ai-bubble">
-                    <div>{ai_msg}</div>
+                    <div style="white-space: pre-wrap;">{ai_msg}</div>
                     <div class="time">{time_str}</div>
                 </div>
             </div>
@@ -715,19 +715,19 @@ async def chat_page(request: Request, db: Session = Depends(get_db)):
 
             function escapeHtml(text) {{
                 const div = document.createElement("div");
-                div.innerText = text;
+                div.innerText = text || "";
                 return div.innerHTML;
             }}
 
             function formatAI(text) {{
-            let safe = escapeHtml(text);
-            safe = safe.replace(/\*\*(.*?)\*\*/g,"<strong>$1</strong>");
-            safe = safe.split("\n").join("<br>");
-            return safe;
+                let safe = escapeHtml(text || "");
+                safe = safe.replace(/\\*\\*(.*?)\\*\\*/g, "<strong>$1</strong>");
+                safe = safe.split("\\n").join("<br>");
+                return safe;
             }}
 
             function chatTitle(text) {{
-                const clean = text.trim().replace(/\\s+/g, " ");
+                const clean = (text || "").trim().replace(/\\s+/g, " ");
                 return clean.length > 28 ? clean.slice(0, 28) + "..." : clean;
             }}
 
@@ -757,7 +757,7 @@ async def chat_page(request: Request, db: Session = Depends(get_db)):
                 conversationList.appendChild(wrapper);
             }}
 
-            function appendMessageGroup(id, userText, aiText, time) {{
+            async function appendMessageGroup(id, userText, aiText, time) {{
                 const group = document.createElement("div");
                 group.className = "message-group fade";
                 group.id = `msg-${{id}}`;
@@ -766,13 +766,13 @@ async def chat_page(request: Request, db: Session = Depends(get_db)):
                     <div class="message-title">${{escapeHtml(chatTitle(userText))}}</div>
                     <div class="user-wrap">
                         <div class="bubble user-bubble">
-                            <div>${{escapeHtml(userText)}}</div>
+                            <div>${{escapeHtml(userText).split("\\n").join("<br>")}}</div>
                             <div class="time">${{time}}</div>
                         </div>
                     </div>
                     <div class="ai-wrap">
                         <div class="bubble ai-bubble">
-                            <div>${{escapeHtml(aiText)}}</div>
+                            <div class="ai-live"></div>
                             <div class="time">${{time}}</div>
                         </div>
                     </div>
@@ -780,6 +780,15 @@ async def chat_page(request: Request, db: Session = Depends(get_db)):
 
                 chatBox.appendChild(group);
                 chatBox.scrollTop = chatBox.scrollHeight;
+
+                const target = group.querySelector(".ai-live");
+                const formatted = formatAI(aiText);
+
+                for (let i = 0; i < formatted.length; i++) {{
+                    target.innerHTML = formatted.slice(0, i + 1);
+                    chatBox.scrollTop = chatBox.scrollHeight;
+                    await new Promise(r => setTimeout(r, 8));
+                }}
             }}
 
             async function deleteChat(id) {{
@@ -821,7 +830,7 @@ async def chat_page(request: Request, db: Session = Depends(get_db)):
                     <div class="message-title">${{escapeHtml(chatTitle(message))}}</div>
                     <div class="user-wrap">
                         <div class="bubble user-bubble">
-                            <div>${{escapeHtml(message)}}</div>
+                            <div>${{escapeHtml(message).split("\\n").join("<br>")}}</div>
                             <div class="time">${{tempTime}}</div>
                         </div>
                     </div>
@@ -840,9 +849,9 @@ async def chat_page(request: Request, db: Session = Depends(get_db)):
                     }});
 
                     const data = await res.json();
-                    typing.style.display = "none";
 
                     if (!data.success) {{
+                        typing.style.display = "none";
                         const err = document.createElement("div");
                         err.className = "ai-wrap";
                         err.innerHTML = `<div class="bubble ai-bubble">Hata oluştu: ${{escapeHtml(data.error || "Bilinmeyen hata")}}</div>`;
@@ -852,7 +861,8 @@ async def chat_page(request: Request, db: Session = Depends(get_db)):
 
                     tempGroup.remove();
                     appendSidebarItem(data.id, message);
-                    appendMessageGroup(data.id, message, data.ai, data.time);
+                    await appendMessageGroup(data.id, message, data.ai, data.time);
+                    typing.style.display = "none";
                 }} catch (err) {{
                     typing.style.display = "none";
                     const fail = document.createElement("div");
@@ -911,11 +921,11 @@ async def chat(request: Request, db: Session = Depends(get_db)):
             return JSONResponse({"success": False, "error": "Mesaj boş olamaz."}, status_code=400)
 
         response = client.chat.completions.create(
-    model="llama-3.3-70b-versatile",
-    messages=[
-        {
-            "role": "system",
-            "content": """Sen Türkçe konuşan sıcak, doğal ve yardımsever bir yapay zekasın.
+            model="llama-3.3-70b-versatile",
+            messages=[
+                {
+                    "role": "system",
+                    "content": """Sen Türkçe konuşan sıcak, doğal ve yardımsever bir yapay zekasın.
 Cevaplarını düzenli ve okunabilir yaz.
 
 Kurallar:
@@ -928,13 +938,14 @@ Kurallar:
 - Kullanıcı rahat okusun diye temiz bir düzen kullan.
 - Önemli kelimeleri bazen **kalın vurgulu** yazabilirsin.
 - Tek paragraflık uzun duvar yazısı yazma."""
-        },
-        {
-            "role": "user",
-            "content": message
-        }
-    ]
-)
+                },
+                {
+                    "role": "user",
+                    "content": message
+                }
+            ]
+        )
+
         ai_text = response.choices[0].message.content or ""
 
         new_chat = models.Chat(
