@@ -12,18 +12,20 @@ from datetime import datetime
 from database import get_db, engine, Base
 import models
 
+load_dotenv()
+
 app = FastAPI()
 
+# ---------------- SESSION ----------------
 app.add_middleware(
     SessionMiddleware,
-    secret_key="supersecretkey",
+    secret_key=os.getenv("SESSION_SECRET_KEY", "supersecretkey"),
     same_site="lax",
     https_only=False,
     max_age=3600
 )
 
-load_dotenv()
-
+# ---------------- OAUTH ----------------
 oauth = OAuth()
 oauth.register(
     name='google',
@@ -33,6 +35,7 @@ oauth.register(
     client_kwargs={'scope': 'openid email profile'}
 )
 
+# ---------------- OPENAI CLIENT ----------------
 from openai import OpenAI
 
 client = OpenAI(
@@ -41,26 +44,22 @@ client = OpenAI(
 )
 
 # ---------------- HOME ----------------
-
 @app.get("/", response_class=HTMLResponse)
 async def home():
     return "<h1>AI Chat 🎉</h1><a href='/login'>Google ile giriş</a>"
 
 # ---------------- LOGIN ----------------
-
 @app.get("/login")
 async def login(request: Request):
     return await oauth.google.authorize_redirect(request, os.getenv("REDIRECT_URI"))
 
 # ---------------- CALLBACK ----------------
-
 @app.get("/auth/callback")
 async def callback(request: Request, db: Session = Depends(get_db)):
     token = await oauth.google.authorize_access_token(request)
     user = token.get("userinfo")
 
     db_user = db.query(models.User).filter(models.User.email == user["email"]).first()
-
     if not db_user:
         db_user = models.User(email=user["email"], password="google")
         db.add(db_user)
@@ -77,26 +76,32 @@ async def callback(request: Request, db: Session = Depends(get_db)):
     return RedirectResponse("/chat")
 
 # ---------------- CHAT PAGE ----------------
-
 @app.get("/chat", response_class=HTMLResponse)
 async def chat_page(request: Request, db: Session = Depends(get_db)):
     user = request.session.get("user")
-
     if not user:
         return RedirectResponse("/login")
 
-    chats = db.query(models.Chat).filter(
-        models.Chat.user_id == user["id"]
-    ).all()
+    # Kullanıcının sohbet listesi (sidebar)
+    user_chats = db.query(models.Chat).filter(models.Chat.user_id == user["id"]).order_by(models.Chat.timestamp.desc()).all()
+
+    sidebar_html = ""
+    for chat in user_chats:
+        title = chat.user_message[:20] or "Yeni Sohbet"
+        sidebar_html += f'<div class="chat-item" data-chat-id="{chat.id}">{title}</div>'
+
+    # Varsayılan olarak en son sohbet gösterilecek
+    if user_chats:
+        active_chat = user_chats[0]
+        active_messages = db.query(models.Chat).filter(models.Chat.user_id == user["id"], models.Chat.id == active_chat.id).order_by(models.Chat.timestamp).all()
+    else:
+        active_messages = []
 
     chat_html = ""
-    for c in chats:
-        time_str = datetime.now().strftime("%H:%M")
-        title = c.user_message[:20]
-
+    for c in active_messages:
+        time_str = c.timestamp.strftime("%H:%M") if hasattr(c, "timestamp") and c.timestamp else datetime.now().strftime("%H:%M")
         chat_html += f"""
-        <div class="msg fade">
-            <div class="title">{title}</div>
+        <div class="msg show">
             <div class="user">{c.user_message}<span>{time_str}</span></div>
             <div class="ai">{c.ai_response}<span>{time_str}</span></div>
         </div>
@@ -105,162 +110,85 @@ async def chat_page(request: Request, db: Session = Depends(get_db)):
     return HTMLResponse(f"""
 <html>
 <head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
-body {{
-    margin:0;
-    font-family: Arial;
-    background: linear-gradient(135deg,#667eea,#764ba2);
-    display:flex;
-}}
+/* BODY + DARK MODE */
+body {{ margin:0; font-family: Arial, sans-serif; display:flex; height:100vh; background: linear-gradient(135deg,#667eea,#764ba2); }}
+body.dark {{ background:#121212; color:white; }}
 
-body.dark {{
-    background:#0f0f0f;
-    color:white;
-}}
-
+/* SIDEBAR */
 .sidebar {{
-    width:220px;
-    background:rgba(0,0,0,0.2);
-    backdrop-filter: blur(10px);
-    padding:15px;
-    color:white;
-}}
-
-.sidebar h3 {{
-    margin-top:0;
-}}
-
-.container {{
-    flex:1;
+    width:240px;
+    background: rgba(255,255,255,0.15);
+    backdrop-filter: blur(15px);
     padding:20px;
-}}
-
-.header {{
     display:flex;
-    align-items:center;
-    margin-bottom:10px;
+    flex-direction: column;
+    gap:10px;
 }}
-
-.avatar {{
-    width:40px;
-    height:40px;
-    border-radius:50%;
-    margin-right:10px;
-}}
-
-.chat-box {{
-    background:white;
-    height:65vh;
-    overflow-y:auto;
-    border-radius:15px;
-    padding:15px;
-}}
-
-body.dark .chat-box {{
-    background:#1e1e1e;
-}}
-
-.msg {{
-    margin-bottom:15px;
-}}
-
-.fade {{
-    animation:fadeIn 0.3s ease;
-}}
-
-@keyframes fadeIn {{
-    from {{opacity:0; transform:translateY(10px);}}
-    to {{opacity:1; transform:translateY(0);}}
-}}
-
-.user {{
-    background:linear-gradient(45deg,#6ee7b7,#3b82f6);
-    color:white;
+.sidebar h3 {{ margin-top:0; }}
+.chat-item {{
     padding:10px;
-    margin:5px;
     border-radius:15px;
-    text-align:right;
-}}
-
-.ai {{
-    background:#eee;
-    padding:10px;
-    margin:5px;
-    border-radius:15px;
-}}
-
-body.dark .ai {{
-    background:#333;
-}}
-
-span {{
-    font-size:10px;
-    display:block;
-}}
-
-form {{
-    display:flex;
-    margin-top:10px;
-}}
-
-input {{
-    flex:1;
-    padding:12px;
-    border-radius:15px;
-    border:none;
-}}
-
-button {{
-    margin-left:5px;
-    padding:12px;
-    border:none;
-    border-radius:15px;
-    background:#667eea;
-    color:white;
     cursor:pointer;
+    transition: background 0.3s;
 }}
+.chat-item:hover {{ background: rgba(255,255,255,0.25); }}
+.chat-item.active {{ background: rgba(255,255,255,0.4); font-weight:bold; }}
 
-#typing {{
-    display:none;
-    color:gray;
-}}
+/* CONTAINER */
+.container {{ flex:1; display:flex; flex-direction: column; padding:20px; position:relative; }}
+.header {{ display:flex; align-items:center; margin-bottom:10px; }}
+.avatar {{ width:50px; height:50px; border-radius:50%; margin-right:10px; transition: transform 0.3s; }}
+.avatar:hover {{ transform: scale(1.1); }}
 
-.search {{
-    width:100%;
-    padding:8px;
-    margin-bottom:10px;
-    border-radius:10px;
-    border:none;
+/* CHAT BOX */
+.chat-box {{
+    flex:1;
+    background: rgba(255,255,255,0.15);
+    backdrop-filter: blur(10px);
+    border-radius:20px;
+    padding:15px;
+    overflow-y:auto;
+    display:flex;
+    flex-direction: column;
+    gap:10px;
 }}
+body.dark .chat-box {{ background: rgba(0,0,0,0.25); }}
 
-.toggle {{
-    position:absolute;
-    top:10px;
-    right:10px;
-}}
+/* MSG */
+.msg {{ opacity:0; transform: translateY(10px); transition: all 0.3s ease; }}
+.msg.show {{ opacity:1; transform: translateY(0); }}
+.user {{ align-self:flex-end; background: linear-gradient(45deg,#6ee7b7,#3b82f6); color:white; padding:10px 15px; border-radius:20px; max-width:70%; }}
+.ai {{ align-self:flex-start; background: rgba(255,255,255,0.6); padding:10px 15px; border-radius:20px; max-width:70%; }}
+body.dark .ai {{ background: rgba(0,0,0,0.4); color:white; }}
+span {{ font-size:10px; display:block; text-align:right; margin-top:3px; }}
 
-.footer {{
-    text-align:center;
-    margin-top:10px;
-    font-size:12px;
-    color:white;
-}}
+/* FORM */
+form {{ display:flex; margin-top:10px; position: sticky; bottom:0; gap:5px; }}
+input {{ flex:1; padding:12px; border-radius:20px; border:none; }}
+button {{ padding:12px 20px; border:none; border-radius:20px; background:#667eea; color:white; cursor:pointer; transition: background 0.3s; }}
+button:hover {{ background:#5a67d8; }}
+
+/* TYPING + SEARCH + TOGGLE */
+#typing {{ display:none; color:gray; margin-top:5px; }}
+.search {{ width:100%; padding:8px; margin-bottom:10px; border-radius:10px; border:none; }}
+.toggle {{ position:absolute; top:10px; right:10px; cursor:pointer; }}
+
+/* FOOTER */
+.footer {{ text-align:center; margin-top:10px; font-size:12px; color:white; }}
 </style>
 </head>
-
 <body>
-
 <div class="sidebar">
 <h3>💬 Sohbetler</h3>
-<p>Yeni sohbet yakında 😏</p>
+{sidebar_html}
 </div>
 
 <div class="container">
-
 <button class="toggle" onclick="toggleDark()">🌙</button>
-
 <div class="header">
-<img src="{user.get('picture') or 'https://i.pravatar.cc/40'}" class="avatar">
+<img src="{user.get('picture') or 'https://i.pravatar.cc/50'}" class="avatar">
 <div>
 <div>{user['name']}</div>
 <div style="font-size:12px;color:lightgreen;">🟢 Online</div>
@@ -268,7 +196,6 @@ button {{
 </div>
 
 <input class="search" id="search" placeholder="Ara...">
-
 <div id="chatBox" class="chat-box">
 {chat_html}
 </div>
@@ -276,96 +203,97 @@ button {{
 <p id="typing">AI yazıyor...</p>
 
 <form id="chatForm">
-<input id="msg" placeholder="Mesaj yaz...">
+<input id="msg" placeholder="Mesaj yaz..." autocomplete="off">
 <button>Gönder</button>
 </form>
 
 <div class="footer">✨ Pınar tarafından üretildi.</div>
-
 </div>
 
 <script>
-const form=document.getElementById("chatForm");
-const input=document.getElementById("msg");
-const chatBox=document.getElementById("chatBox");
-const typing=document.getElementById("typing");
+const form = document.getElementById("chatForm");
+const input = document.getElementById("msg");
+const chatBox = document.getElementById("chatBox");
+const typing = document.getElementById("typing");
+const sidebar = document.querySelectorAll(".chat-item");
 
-form.addEventListener("submit",async(e)=>{{
-e.preventDefault();
-let message=input.value;
-if(!message)return;
+function scrollToBottom(){ chatBox.scrollTop = chatBox.scrollHeight; }
 
-let time=new Date().toLocaleTimeString().slice(0,5);
+form.addEventListener("submit", async (e) => {{
+    e.preventDefault();
+    let message = input.value.trim();
+    if(!message) return;
 
-chatBox.innerHTML+=`
-<div class="msg fade">
-<div class="user">${{message}}<span>${{time}}</span></div>
-</div>`;
+    let time = new Date().toLocaleTimeString().slice(0,5);
 
-input.value="";
-typing.style.display="block";
+    let userDiv = document.createElement("div");
+    userDiv.className = "msg show user";
+    userDiv.innerHTML = `${{message}}<span>${{time}}</span>`;
+    chatBox.appendChild(userDiv);
 
-let res=await fetch("/chat",{{method:"POST",body:new URLSearchParams({{message}})}});
+    input.value="";
+    typing.style.display="block";
+    scrollToBottom();
 
-let data=await res.json();
+    try {{
+        let res = await fetch("/chat", {{ method:"POST", body:new URLSearchParams({{message}})}} );
+        let data = await res.json();
+        typing.style.display="none";
 
-typing.style.display="none";
+        let aiDiv = document.createElement("div");
+        aiDiv.className = "msg show ai";
+        aiDiv.innerHTML = `${{data.ai}}<span>${{time}}</span>`;
+        chatBox.appendChild(aiDiv);
 
-chatBox.innerHTML+=`
-<div class="msg fade">
-<div class="ai">${{data.ai}}<span>${{time}}</span></div>
-</div>
-`;
-
-chatBox.scrollTop=chatBox.scrollHeight;
+        scrollToBottom();
+    }} catch(err) {{
+        typing.style.display="none";
+        alert("AI cevap veremiyor 😢");
+    }}
 }});
 
-input.addEventListener("keypress",e=>{{
-if(e.key==="Enter"){{e.preventDefault();form.dispatchEvent(new Event("submit"));}}
+// Enter key submit
+input.addEventListener("keypress", e => {{
+    if(e.key==="Enter"){ e.preventDefault(); form.dispatchEvent(new Event("submit")); }
 }});
 
+// Dark mode toggle
 function toggleDark(){{
-document.body.classList.toggle("dark");
-localStorage.setItem("dark",document.body.classList.contains("dark"));
+    document.body.classList.toggle("dark");
+    localStorage.setItem("dark",document.body.classList.contains("dark"));
 }}
+if(localStorage.getItem("dark")==="true") document.body.classList.add("dark");
 
-if(localStorage.getItem("dark")==="true")document.body.classList.add("dark");
+// Sidebar click - multi-chat
+sidebar.forEach(item => {{
+    item.addEventListener("click", async () => {{
+        sidebar.forEach(i=>i.classList.remove("active"));
+        item.classList.add("active");
 
-document.getElementById("search").addEventListener("input",function(){{
-let val=this.value.toLowerCase();
-document.querySelectorAll(".msg").forEach(m=>{{
-m.style.display=m.innerText.toLowerCase().includes(val)?"block":"none";
+        let chatId = item.dataset.chatId;
+        let res = await fetch(`/chat/${{chatId}}`);
+        let data = await res.json();
+        chatBox.innerHTML = "";
+        data.messages.forEach(m => {{
+            let div = document.createElement("div");
+            div.className = "msg show " + (m.role==="user"?"user":"ai");
+            div.innerHTML = `${{m.content}}<span>${{m.time}}</span>`;
+            chatBox.appendChild(div);
+        }});
+        scrollToBottom();
+    }});
 }});
+
+// Search
+document.getElementById("search").addEventListener("input", function(){{
+    let val=this.value.toLowerCase();
+    document.querySelectorAll(".msg").forEach(m=>{
+        m.style.display=m.innerText.toLowerCase().includes(val)?"flex":"none";
+    }});
 }});
 
-chatBox.scrollTop=chatBox.scrollHeight;
+scrollToBottom();
 </script>
-
 </body>
 </html>
 """)
-
-# ---------------- CHAT POST ----------------
-
-@app.post("/chat")
-async def chat(request: Request, db: Session = Depends(get_db)):
-    form = await request.form()
-    message = form.get("message")
-
-    user = request.session.get("user")
-
-    response = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        messages=[{"role":"user","content":message}]
-    )
-
-    ai_text = response.choices[0].message.content
-
-    db.add(models.Chat(
-        user_id=user["id"],
-        user_message=message,
-        ai_response=ai_text
-    ))
-    db.commit()
-
-    return JSONResponse({"ai": ai_text})
