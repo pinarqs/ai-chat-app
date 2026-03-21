@@ -485,6 +485,8 @@ async def chat_page(request: Request, db: Session = Depends(get_db)):
                 color: #6b7280;
                 margin: 0 0 8px 6px;
                 font-weight: 700;
+                letter-spacing: 0.3px;
+                text-transform: uppercase;
             }}
 
             .user-wrap {{
@@ -511,12 +513,16 @@ async def chat_page(request: Request, db: Session = Depends(get_db)):
                 background: linear-gradient(135deg, #60a5fa, #8b5cf6);
                 color: white;
                 border-bottom-right-radius: 6px;
+                white-space: pre-wrap;
+                line-height: 1.6;
             }}
 
             .ai-bubble {{
                 background: #f3f4f6;
                 color: #111827;
                 border-bottom-left-radius: 6px;
+                white-space: pre-wrap;
+                line-height: 1.6;
             }}
 
             body.dark .ai-bubble {{
@@ -898,9 +904,27 @@ async def chat(request: Request, db: Session = Depends(get_db)):
             return JSONResponse({"success": False, "error": "Mesaj boş olamaz."}, status_code=400)
 
         response = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=[{"role": "user", "content": message}]
-        )
+    model="llama-3.3-70b-versatile",
+    messages=[
+        {
+            "role": "system",
+            "content": """Sen Türkçe konuşan yardımcı bir yapay zekasın.
+Cevaplarını düzenli ve okunabilir yaz.
+Kurallar:
+- Gerekirse kısa başlıklar kullan.
+- Uzun cevaplarda paragrafları ayır.
+- Uygun yerlerde madde işaretleri kullan.
+- Cümleleri birbirine yapıştırma.
+- Açıklamaları sade ve anlaşılır ver.
+- Gereksiz uzun tek paragraf yazma.
+- Kullanıcı anlaması kolay olsun diye temiz bir düzen kullan."""
+        },
+        {
+            "role": "user",
+            "content": message
+        }
+    ]
+)
 
         ai_text = response.choices[0].message.content or ""
 
