@@ -12,8 +12,6 @@ from datetime import datetime
 from database import get_db, engine, Base
 import models
 
-# Base.metadata.create_all(bind=engine)
-
 app = FastAPI()
 
 app.add_middleware(
@@ -23,7 +21,6 @@ app.add_middleware(
     https_only=False,
     max_age=3600
 )
-
 
 load_dotenv()
 
@@ -73,7 +70,8 @@ async def callback(request: Request, db: Session = Depends(get_db)):
     request.session["user"] = {
         "id": db_user.id,
         "name": user["name"],
-        "email": user["email"]
+        "email": user["email"],
+        "picture": user.get("picture")
     }
 
     return RedirectResponse("/chat")
@@ -97,7 +95,7 @@ async def chat_page(request: Request, db: Session = Depends(get_db)):
         title = c.user_message[:20]
 
         chat_html += f"""
-        <div class="msg">
+        <div class="msg fade">
             <div class="title">{title}</div>
             <div class="user">{c.user_message}<span>{time_str}</span></div>
             <div class="ai">{c.ai_response}<span>{time_str}</span></div>
@@ -112,16 +110,28 @@ body {{
     margin:0;
     font-family: Arial;
     background: linear-gradient(135deg,#667eea,#764ba2);
+    display:flex;
 }}
 
 body.dark {{
-    background:#121212;
+    background:#0f0f0f;
     color:white;
 }}
 
+.sidebar {{
+    width:220px;
+    background:rgba(0,0,0,0.2);
+    backdrop-filter: blur(10px);
+    padding:15px;
+    color:white;
+}}
+
+.sidebar h3 {{
+    margin-top:0;
+}}
+
 .container {{
-    max-width:700px;
-    margin:auto;
+    flex:1;
     padding:20px;
 }}
 
@@ -138,17 +148,12 @@ body.dark {{
     margin-right:10px;
 }}
 
-.status {{
-    font-size:12px;
-    color:lightgreen;
-}}
-
 .chat-box {{
     background:white;
-    height:60vh;
+    height:65vh;
     overflow-y:auto;
     border-radius:15px;
-    padding:10px;
+    padding:15px;
 }}
 
 body.dark .chat-box {{
@@ -159,17 +164,21 @@ body.dark .chat-box {{
     margin-bottom:15px;
 }}
 
-.title {{
-    font-size:12px;
-    color:#888;
-    margin-left:5px;
+.fade {{
+    animation:fadeIn 0.3s ease;
+}}
+
+@keyframes fadeIn {{
+    from {{opacity:0; transform:translateY(10px);}}
+    to {{opacity:1; transform:translateY(0);}}
 }}
 
 .user {{
-    background:#dcf8c6;
+    background:linear-gradient(45deg,#6ee7b7,#3b82f6);
+    color:white;
     padding:10px;
     margin:5px;
-    border-radius:10px;
+    border-radius:15px;
     text-align:right;
 }}
 
@@ -177,12 +186,15 @@ body.dark .chat-box {{
     background:#eee;
     padding:10px;
     margin:5px;
-    border-radius:10px;
+    border-radius:15px;
+}}
+
+body.dark .ai {{
+    background:#333;
 }}
 
 span {{
     font-size:10px;
-    color:gray;
     display:block;
 }}
 
@@ -193,18 +205,19 @@ form {{
 
 input {{
     flex:1;
-    padding:10px;
-    border-radius:10px;
+    padding:12px;
+    border-radius:15px;
     border:none;
 }}
 
 button {{
     margin-left:5px;
-    padding:10px;
+    padding:12px;
     border:none;
-    border-radius:10px;
+    border-radius:15px;
     background:#667eea;
     color:white;
+    cursor:pointer;
 }}
 
 #typing {{
@@ -225,20 +238,32 @@ button {{
     top:10px;
     right:10px;
 }}
+
+.footer {{
+    text-align:center;
+    margin-top:10px;
+    font-size:12px;
+    color:white;
+}}
 </style>
 </head>
 
 <body>
 
-<button class="toggle" onclick="toggleDark()">🌙</button>
+<div class="sidebar">
+<h3>💬 Sohbetler</h3>
+<p>Yeni sohbet yakında 😏</p>
+</div>
 
 <div class="container">
 
+<button class="toggle" onclick="toggleDark()">🌙</button>
+
 <div class="header">
-<img src="https://i.pravatar.cc/40" class="avatar">
+<img src="{user.get('picture') or 'https://i.pravatar.cc/40'}" class="avatar">
 <div>
 <div>{user['name']}</div>
-<div class="status">🟢 Online</div>
+<div style="font-size:12px;color:lightgreen;">🟢 Online</div>
 </div>
 </div>
 
@@ -255,9 +280,7 @@ button {{
 <button>Gönder</button>
 </form>
 
-<div style="text-align:center;color:white;font-size:12px;">
-✨ Pınar tarafından üretildi.
-</div>
+<div class="footer">✨ Pınar tarafından üretildi.</div>
 
 </div>
 
@@ -265,6 +288,7 @@ button {{
 const form=document.getElementById("chatForm");
 const input=document.getElementById("msg");
 const chatBox=document.getElementById("chatBox");
+const typing=document.getElementById("typing");
 
 form.addEventListener("submit",async(e)=>{{
 e.preventDefault();
@@ -274,8 +298,7 @@ if(!message)return;
 let time=new Date().toLocaleTimeString().slice(0,5);
 
 chatBox.innerHTML+=`
-<div class="msg">
-<div class="title">${{message.slice(0,20)}}</div>
+<div class="msg fade">
 <div class="user">${{message}}<span>${{time}}</span></div>
 </div>`;
 
@@ -289,7 +312,9 @@ let data=await res.json();
 typing.style.display="none";
 
 chatBox.innerHTML+=`
+<div class="msg fade">
 <div class="ai">${{data.ai}}<span>${{time}}</span></div>
+</div>
 `;
 
 chatBox.scrollTop=chatBox.scrollHeight;
@@ -306,7 +331,6 @@ localStorage.setItem("dark",document.body.classList.contains("dark"));
 
 if(localStorage.getItem("dark")==="true")document.body.classList.add("dark");
 
-// SEARCH
 document.getElementById("search").addEventListener("input",function(){{
 let val=this.value.toLowerCase();
 document.querySelectorAll(".msg").forEach(m=>{{
