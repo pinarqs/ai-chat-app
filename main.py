@@ -107,7 +107,7 @@ async def home(request: Request):
     <body>
         <div class="card">
             <h1>Pınar AI ✨</h1>
-            <p>Google ile giriş yap ve kendi yapay zekâ sohbet alanını kullan.</p>
+            <p>Google ile giriş yap ve kendi yapay zeka sohbet alanını kullan.</p>
             <a href="/login">Google ile giriş yap</a>
         </div>
     </body>
@@ -485,7 +485,7 @@ async def chat_page(request: Request, db: Session = Depends(get_db)):
                 color: #6b7280;
                 margin: 0 0 8px 6px;
                 font-weight: 700;
-                letter-spacing: 0.3px;
+                letter-spacing: 0.4px;
                 text-transform: uppercase;
             }}
 
@@ -514,7 +514,7 @@ async def chat_page(request: Request, db: Session = Depends(get_db)):
                 color: white;
                 border-bottom-right-radius: 6px;
                 white-space: pre-wrap;
-                line-height: 1.6;
+                line-height: 1.7;
             }}
 
             .ai-bubble {{
@@ -522,7 +522,7 @@ async def chat_page(request: Request, db: Session = Depends(get_db)):
                 color: #111827;
                 border-bottom-left-radius: 6px;
                 white-space: pre-wrap;
-                line-height: 1.6;
+                line-height: 1.7;
             }}
 
             body.dark .ai-bubble {{
@@ -666,7 +666,7 @@ async def chat_page(request: Request, db: Session = Depends(get_db)):
             <main class="main">
                 <div class="main-top">
                     <div>
-                        <div class="main-title">Yapay zekâ sohbetin hazır</div>
+                        <div class="main-title">Yapay zeka sohbetin hazır</div>
                         <div class="main-sub">Mesajların kaydedilir, arayabilir ve silebilirsin.</div>
                     </div>
                 </div>
@@ -908,16 +908,19 @@ async def chat(request: Request, db: Session = Depends(get_db)):
     messages=[
         {
             "role": "system",
-            "content": """Sen Türkçe konuşan yardımcı bir yapay zekasın.
+            "content": """Sen Türkçe konuşan sıcak, doğal ve yardımsever bir yapay zekasın.
 Cevaplarını düzenli ve okunabilir yaz.
+
 Kurallar:
-- Gerekirse kısa başlıklar kullan.
-- Uzun cevaplarda paragrafları ayır.
+- Gerektiğinde kısa başlıklar kullan.
+- Uzun cevapları kısa paragraflara böl.
 - Uygun yerlerde madde işaretleri kullan.
 - Cümleleri birbirine yapıştırma.
-- Açıklamaları sade ve anlaşılır ver.
-- Gereksiz uzun tek paragraf yazma.
-- Kullanıcı anlaması kolay olsun diye temiz bir düzen kullan."""
+- Doğal ve yerinde emojiler kullan.
+- Gereksiz aşırı resmiyet kullanma.
+- Kullanıcı rahat okusun diye temiz bir düzen kullan.
+- Önemli kelimeleri bazen **kalın vurgulu** yazabilirsin.
+- Tek paragraflık uzun duvar yazısı yazma."""
         },
         {
             "role": "user",
@@ -925,7 +928,6 @@ Kurallar:
         }
     ]
 )
-
         ai_text = response.choices[0].message.content or ""
 
         new_chat = models.Chat(
