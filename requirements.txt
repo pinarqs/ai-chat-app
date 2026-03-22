@@ -6,4 +6,4 @@ authlib
 sqlalchemy
 itsdangerous
 python-multipart
-
+slowapi
