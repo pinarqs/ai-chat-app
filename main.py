@@ -14,7 +14,7 @@ import logging
 
 from database import get_db, engine, Base
 import models
-
+Base.metadata.create_all(bind=engine)
 # ---------------- ENV ----------------
 load_dotenv()
 

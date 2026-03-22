@@ -6,7 +6,7 @@ class User(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String, unique=True, index=True)
-    password = Column(String, nullable=True)  # düzeltildi
+    password = Column(String, nullable=True)
 
 class Chat(Base):
     __tablename__ = "chats"
